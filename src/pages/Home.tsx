@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { CardSlot } from '../components/CardSlot'
 import { matchApi, teamsApi } from '../services/api'
@@ -174,6 +174,21 @@ export function Home() {
           }}>
             {isLeader ? '👑 Leader' : '⚔️ Member'}
           </span>
+          <Link
+            to="/profile"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: 'transparent',
+              border: '2px solid #ffd700',
+              borderRadius: '8px',
+              color: '#ffd700',
+              cursor: 'pointer',
+              fontWeight: '600',
+              textDecoration: 'none',
+            }}
+          >
+            ⚙️ Profile
+          </Link>
           <button
             onClick={logout}
             style={{
