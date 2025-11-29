@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
 import type { ReactNode } from 'react'
-import { authApi } from '../services/api'
-import type { User, RegisterRequest, LoginRequest } from '../types'
+import { authApi, usersApi } from '../services/api'
+import type { User, RegisterRequest, LoginRequest, Position } from '../types'
 
 interface AuthContextType {
   user: Omit<User, 'password'> | null
@@ -13,6 +13,7 @@ interface AuthContextType {
   login: (data: LoginRequest) => Promise<Omit<User, 'password'>>
   register: (data: RegisterRequest) => Promise<Omit<User, 'password'>>
   logout: () => void
+  updateUser: (data: { name?: string; position?: Position; skills?: string[] }) => Promise<Omit<User, 'password'>>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -80,6 +81,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
+  const updateUser = async (data: { name?: string; position?: Position; skills?: string[] }) => {
+    if (!user) {
+      throw new Error('Not authenticated')
+    }
+    setError(null)
+    try {
+      const updatedUser = await usersApi.update(user.id, data)
+      setUser(updatedUser)
+      return updatedUser
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Update failed'
+      setError(message)
+      throw err
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -92,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         register,
         logout,
+        updateUser,
       }}
     >
       {children}

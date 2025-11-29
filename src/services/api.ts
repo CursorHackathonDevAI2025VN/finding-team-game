@@ -81,6 +81,14 @@ export const usersApi = {
       return res.data.data
     }
     throw new Error(res.data.error || 'Failed to get user')
+  },
+
+  update: async (id: string, data: { name?: string; position?: Position; skills?: string[] }): Promise<Omit<User, 'password'>> => {
+    const res = await api.put<ApiResponse<Omit<User, 'password'>>>(`/users/${id}`, data)
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to update user')
   }
 }
 
