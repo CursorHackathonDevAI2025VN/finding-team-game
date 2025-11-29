@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import jwt from 'jsonwebtoken'
 import { store } from '../db/store'
-import { Team, Slot, JWTPayload } from '../types'
+import { Team, Slot, JWTPayload, Position } from '../types'
 
 const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET || 'hackathon-secret-key-2024'
@@ -59,6 +59,46 @@ router.get('/my/team', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Get my team error:', error)
     res.status(500).json({ success: false, error: 'Failed to get team' })
+  }
+})
+
+// Get invitations for current user (teams that have invited them)
+router.get('/invitations', (req: Request, res: Response) => {
+  try {
+    const payload = getUserFromToken(req)
+    if (!payload) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' })
+    }
+
+    const allTeams = store.getAllTeams()
+    const invitations: Array<{
+      teamId: string
+      teamName: string
+      slotId: string
+      position: Position
+      skills: string[]
+      leaderId: string
+    }> = []
+
+    allTeams.forEach(team => {
+      team.slots.forEach(slot => {
+        if (slot.memberId === payload.userId) {
+          invitations.push({
+            teamId: team.id,
+            teamName: team.name,
+            slotId: slot.id,
+            position: slot.position,
+            skills: slot.skills,
+            leaderId: team.leaderId
+          })
+        }
+      })
+    })
+
+    res.json({ success: true, data: invitations })
+  } catch (error) {
+    console.error('Get invitations error:', error)
+    res.status(500).json({ success: false, error: 'Failed to get invitations' })
   }
 })
 

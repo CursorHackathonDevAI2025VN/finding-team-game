@@ -13,11 +13,22 @@ interface SlotState {
   suggestions: MatchSuggestion[]
 }
 
+interface Invitation {
+  teamId: string
+  teamName: string
+  slotId: string
+  position: Position
+  skills: string[]
+  leaderId: string
+}
+
 export function Home() {
   const { user, isLeader, logout, loading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [slots, setSlots] = useState<SlotState[]>([])
   const [team, setTeam] = useState<Team | null>(null)
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -30,6 +41,53 @@ export function Home() {
       loadTeam()
     }
   }, [user, isLeader])
+
+  // Check for invitations (for members only)
+  const checkInvitations = async () => {
+    if (!user || isLeader) return
+
+    try {
+      const userInvitations = await teamsApi.getInvitations()
+      setInvitations(userInvitations)
+      console.log('[Polling] Invitations found:', userInvitations.length)
+    } catch (error) {
+      console.error('Failed to check invitations:', error)
+    }
+  }
+
+  // Polling with console.log and invitation checking
+  useEffect(() => {
+    if (!user) return;
+
+    // Check invitations immediately for members
+    if (!isLeader) {
+      checkInvitations()
+    }
+
+    const pollInterval = setInterval(() => {
+      console.log('[Polling] Current state:', {
+        timestamp: new Date().toISOString(),
+        user: user ? { id: user.id, name: user.name, position: user.position } : null,
+        isLeader,
+        team: team ? { id: team.id, name: team.name, slotsCount: team.slots.length } : null,
+        slots: slots.map(s => ({
+          id: s.id,
+          position: s.position,
+          skillsCount: s.skills.length,
+          suggestionsCount: s.suggestions.length,
+          loading: s.loading
+        })),
+        invitationsCount: invitations.length
+      })
+
+      // Check for invitations on each poll (for members)
+      if (!isLeader) {
+        checkInvitations()
+      }
+    }, 1000)
+
+    return () => clearInterval(pollInterval)
+  }, [user, isLeader, team, slots, invitations.length])
 
   const loadTeam = async () => {
     try {
@@ -118,6 +176,50 @@ export function Home() {
     alert(`${isLeader ? 'Invited' : 'Requested to join'} ${suggestion.user.name}!`)
   }
 
+  const handleAcceptInvitation = async (invitation: Invitation) => {
+    try {
+      // Accept invitation by updating the slot (memberId is already set, just confirm)
+      await teamsApi.updateSlot(invitation.teamId, invitation.slotId, {})
+      // Remove from invitations list
+      setInvitations(prev => prev.filter(inv => 
+        !(inv.teamId === invitation.teamId && inv.slotId === invitation.slotId)
+      ))
+      alert(`You've joined ${invitation.teamName}!`)
+    } catch (error) {
+      console.error('Failed to accept invitation:', error)
+      alert('Failed to accept invitation')
+    }
+  }
+
+  const handleDeclineInvitation = async (invitation: Invitation) => {
+    try {
+      // Decline by removing memberId from slot
+      await teamsApi.updateSlot(invitation.teamId, invitation.slotId, { memberId: undefined })
+      // Remove from invitations list
+      setInvitations(prev => prev.filter(inv => 
+        !(inv.teamId === invitation.teamId && inv.slotId === invitation.slotId)
+      ))
+    } catch (error) {
+      console.error('Failed to decline invitation:', error)
+      alert('Failed to decline invitation')
+    }
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.notification-container')) {
+        setShowNotificationDropdown(false)
+      }
+    }
+
+    if (showNotificationDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showNotificationDropdown])
+
   if (authLoading) {
     return (
       <div style={{
@@ -174,6 +276,222 @@ export function Home() {
           }}>
             {isLeader ? '👑 Leader' : '⚔️ Member'}
           </span>
+          
+          {/* Notification Icon */}
+          {!isLeader && (
+            <div className="notification-container" style={{ position: 'relative' }}>
+              <button
+                onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+                style={{
+                  position: 'relative',
+                  padding: '8px 16px',
+                  backgroundColor: 'transparent',
+                  border: '2px solid #ffd700',
+                  borderRadius: '8px',
+                  color: '#ffd700',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  fontSize: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                }}
+              >
+                🔔
+                {invitations.length > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    backgroundColor: '#ff6b6b',
+                    color: '#fff',
+                    borderRadius: '50%',
+                    width: '20px',
+                    height: '20px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                  }}>
+                    {invitations.length > 9 ? '9+' : invitations.length}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Dropdown */}
+              {showNotificationDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  right: 0,
+                  marginTop: '8px',
+                  width: '400px',
+                  maxHeight: '500px',
+                  backgroundColor: '#2a2a4a',
+                  borderRadius: '16px',
+                  border: '2px solid #ffd700',
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+                  zIndex: 1000,
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}>
+                  {/* Dropdown Header */}
+                  <div style={{
+                    padding: '16px 20px',
+                    borderBottom: '1px solid #3d3d5c',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <h3 style={{
+                      color: '#ffd700',
+                      fontSize: '18px',
+                      fontWeight: '700',
+                      margin: 0,
+                    }}>
+                      🔔 Notifications
+                    </h3>
+                    {invitations.length > 0 && (
+                      <span style={{
+                        backgroundColor: '#ff6b6b',
+                        color: '#fff',
+                        padding: '4px 10px',
+                        borderRadius: '12px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                      }}>
+                        {invitations.length}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Invitations List */}
+                  <div style={{
+                    overflowY: 'auto',
+                    maxHeight: '400px',
+                  }}>
+                    {invitations.length === 0 ? (
+                      <div style={{
+                        padding: '40px 20px',
+                        textAlign: 'center',
+                        color: '#a0a0b0',
+                      }}>
+                        <p style={{ fontSize: '48px', margin: '0 0 12px 0' }}>📭</p>
+                        <p style={{ margin: 0 }}>No invitations yet</p>
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+                        {invitations.map((invitation) => (
+                          <div
+                            key={`${invitation.teamId}-${invitation.slotId}`}
+                            style={{
+                              padding: '16px',
+                              backgroundColor: '#1a1a2e',
+                              borderRadius: '12px',
+                              border: '1px solid #3d3d5c',
+                            }}
+                          >
+                            <div style={{
+                              marginBottom: '12px',
+                            }}>
+                              <h4 style={{
+                                color: '#f5f5f5',
+                                fontSize: '16px',
+                                fontWeight: '600',
+                                margin: '0 0 4px 0',
+                              }}>
+                                {invitation.teamName}
+                              </h4>
+                              <p style={{
+                                color: '#a0a0b0',
+                                fontSize: '14px',
+                                margin: '4px 0',
+                              }}>
+                                Position: <strong style={{ color: '#ffd700' }}>{invitation.position}</strong>
+                              </p>
+                              {invitation.skills.length > 0 && (
+                                <div style={{ marginTop: '8px' }}>
+                                  <span style={{ color: '#a0a0b0', fontSize: '12px' }}>Required skills: </span>
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '4px' }}>
+                                    {invitation.skills.map((skill, idx) => (
+                                      <span
+                                        key={idx}
+                                        style={{
+                                          padding: '4px 8px',
+                                          backgroundColor: '#3d3d5c',
+                                          color: '#ffd700',
+                                          borderRadius: '6px',
+                                          fontSize: '12px',
+                                        }}
+                                      >
+                                        {skill}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div style={{
+                              display: 'flex',
+                              gap: '8px',
+                            }}>
+                              <button
+                                onClick={() => handleAcceptInvitation(invitation)}
+                                style={{
+                                  flex: 1,
+                                  padding: '10px 16px',
+                                  backgroundColor: '#4CAF50',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '8px',
+                                  fontSize: '14px',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  transition: 'background-color 0.2s',
+                                }}
+                                onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#45a049'}
+                                onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#4CAF50'}
+                              >
+                                ✅ Accept
+                              </button>
+                              <button
+                                onClick={() => handleDeclineInvitation(invitation)}
+                                style={{
+                                  flex: 1,
+                                  padding: '10px 16px',
+                                  backgroundColor: 'transparent',
+                                  color: '#ff6b6b',
+                                  border: '2px solid #ff6b6b',
+                                  borderRadius: '8px',
+                                  fontSize: '14px',
+                                  fontWeight: '600',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                }}
+                                onMouseOver={(e) => {
+                                  e.currentTarget.style.backgroundColor = '#ff6b6b'
+                                  e.currentTarget.style.color = '#fff'
+                                }}
+                                onMouseOut={(e) => {
+                                  e.currentTarget.style.backgroundColor = 'transparent'
+                                  e.currentTarget.style.color = '#ff6b6b'
+                                }}
+                              >
+                                ❌ Decline
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <Link
             to="/profile"
             style={{

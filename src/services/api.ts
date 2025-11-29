@@ -140,6 +140,28 @@ export const teamsApi = {
       return res.data.data
     }
     throw new Error(res.data.error || 'Failed to delete slot')
+  },
+
+  getInvitations: async (): Promise<Array<{
+    teamId: string
+    teamName: string
+    slotId: string
+    position: Position
+    skills: string[]
+    leaderId: string
+  }>> => {
+    const res = await api.get<ApiResponse<Array<{
+      teamId: string
+      teamName: string
+      slotId: string
+      position: Position
+      skills: string[]
+      leaderId: string
+    }>>>('/teams/invitations')
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to get invitations')
   }
 }
 
