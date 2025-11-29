@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { CardSlot } from '../components/CardSlot'
@@ -32,6 +32,8 @@ export function Home() {
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [teamMembers, setTeamMembers] = useState<TeamMembersResponse | null>(null)
+  const [draggedSuggestion, setDraggedSuggestion] = useState<{ slotId: string; suggestion: MatchSuggestion } | null>(null)
+  const autoSearchedSlots = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -134,6 +136,23 @@ export function Home() {
 
     return () => clearInterval(pollInterval)
   }, [user, isLeader, team, slots, invitations.length])
+
+  // Auto-find suggestions when slot is complete (position + skills filled)
+  useEffect(() => {
+    slots.forEach(slot => {
+      const slotKey = `${slot.id}-${slot.position}-${slot.skills.join(',')}`
+      if (
+        slot.position && 
+        slot.skills.length > 0 && 
+        slot.suggestions.length === 0 && 
+        !slot.loading &&
+        !autoSearchedSlots.current.has(slotKey)
+      ) {
+        autoSearchedSlots.current.add(slotKey)
+        findMatch(slot.id)
+      }
+    })
+  }, [slots])
 
   const loadTeam = async () => {
     try {
@@ -929,21 +948,35 @@ export function Home() {
           gap: '24px',
           marginBottom: '24px',
         }}>
-          {slots.map((slot) => (
-            <CardSlot
-              key={slot.id}
-              id={slot.id}
-              position={slot.position}
-              skills={slot.skills}
-              onPositionChange={(position) => updateSlot(slot.id, { position })}
-              onSkillsChange={(skills) => updateSlot(slot.id, { skills })}
-              onFindMatch={() => findMatch(slot.id)}
-              onDelete={() => deleteSlot(slot.id)}
-              loading={slot.loading}
-              suggestions={slot.suggestions}
-              onSelectSuggestion={(suggestion) => handleSelectSuggestion(slot.id, suggestion)}
-            />
-          ))}
+          {slots.map((slot) => {
+            // Filter out accepted members from suggestions
+            const acceptedMemberIds = teamMembers?.slots
+              .filter(s => s.status === 'accepted' && s.member)
+              .map(s => s.member!.id) || []
+            const filteredSuggestions = slot.suggestions.filter(
+              s => !acceptedMemberIds.includes(s.userId)
+            )
+            
+            return (
+              <CardSlot
+                key={slot.id}
+                id={slot.id}
+                position={slot.position}
+                skills={slot.skills}
+                onPositionChange={(position) => updateSlot(slot.id, { position })}
+                onSkillsChange={(skills) => updateSlot(slot.id, { skills })}
+                onFindMatch={() => findMatch(slot.id)}
+                onDelete={() => deleteSlot(slot.id)}
+                loading={slot.loading}
+                suggestions={filteredSuggestions}
+                onSelectSuggestion={(suggestion) => handleSelectSuggestion(slot.id, suggestion)}
+                onDragStart={(suggestion) => setDraggedSuggestion({ slotId: slot.id, suggestion })}
+                onDragEnd={() => setDraggedSuggestion(null)}
+                onDrop={(suggestion) => handleSelectSuggestion(slot.id, suggestion)}
+                isDragging={draggedSuggestion !== null}
+              />
+            )
+          })}
         </div>
 
         {/* Add Slot Button */}

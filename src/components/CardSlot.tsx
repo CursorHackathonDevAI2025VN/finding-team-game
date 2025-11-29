@@ -14,6 +14,10 @@ interface CardSlotProps {
   loading?: boolean
   suggestions?: MatchSuggestion[]
   onSelectSuggestion?: (suggestion: MatchSuggestion) => void
+  onDragStart?: (suggestion: MatchSuggestion) => void
+  onDragEnd?: () => void
+  onDrop?: (suggestion: MatchSuggestion) => void
+  isDragging?: boolean
 }
 
 export function CardSlot({
@@ -26,8 +30,39 @@ export function CardSlot({
   loading,
   suggestions,
   onSelectSuggestion,
+  onDragStart,
+  onDragEnd,
+  onDrop,
+  isDragging,
 }: CardSlotProps) {
   const [expanded, setExpanded] = useState(true)
+  const [isDropOver, setIsDropOver] = useState(false)
+
+  // Limit suggestions to TOP 3
+  const topSuggestions = suggestions?.slice(0, 3) || []
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDropOver(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDropOver(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDropOver(false)
+    const data = e.dataTransfer.getData('application/json')
+    if (data) {
+      try {
+        const suggestion = JSON.parse(data) as MatchSuggestion
+        onDrop?.(suggestion)
+      } catch (err) {
+        console.error('Failed to parse dropped data:', err)
+      }
+    }
+  }
 
   return (
     <div
@@ -126,6 +161,7 @@ export function CardSlot({
           <button
             onClick={onFindMatch}
             disabled={!position || skills.length === 0 || loading}
+            title="Click to re-fetch suggestions"
             style={{
               width: '100%',
               padding: '12px',
@@ -139,11 +175,34 @@ export function CardSlot({
               transition: 'all 0.2s',
             }}
           >
-            {loading ? '🔍 Finding...' : '🔍 Find Match'}
+            {loading ? '🔍 Finding...' : '🔍 Re-find Match'}
           </button>
 
+          {/* Drop Zone - always visible */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            title="Drop a suggestion here to send invitation"
+            style={{
+              marginTop: '16px',
+              padding: isDropOver ? '24px' : '16px',
+              border: isDropOver ? '2px dashed #ffd700' : '2px dashed #3d3d5c',
+              borderRadius: '12px',
+              backgroundColor: isDropOver ? 'rgba(255, 215, 0, 0.15)' : 'rgba(61, 61, 92, 0.3)',
+              textAlign: 'center',
+              color: isDropOver ? '#ffd700' : '#a0a0b0',
+              transition: 'all 0.2s',
+            }}
+          >
+            <span style={{ fontSize: isDropOver ? '28px' : '20px', transition: 'font-size 0.2s' }}>📥</span>
+            <p style={{ margin: '6px 0 0 0', fontSize: '12px' }}>
+              {isDropOver ? 'Release to invite!' : 'Drop suggestion here to invite'}
+            </p>
+          </div>
+
           {/* Suggestions */}
-          {suggestions && suggestions.length > 0 && (
+          {topSuggestions.length > 0 && (
             <div style={{ marginTop: '20px' }}>
               <h4 style={{
                 color: '#ffd700',
@@ -151,23 +210,36 @@ export function CardSlot({
                 fontWeight: '600',
                 marginBottom: '12px',
               }}>
-                Suggestions ({suggestions.length})
+                Top Suggestions ({topSuggestions.length}{suggestions && suggestions.length > 3 ? ` of ${suggestions.length}` : ''})
               </h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {suggestions.map((s) => (
+                {topSuggestions.map((s) => (
                   <div
                     key={s.userId}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/json', JSON.stringify(s))
+                      onDragStart?.(s)
+                    }}
+                    onDragEnd={() => onDragEnd?.()}
                     onClick={() => onSelectSuggestion?.(s)}
+                    title="Drag to any slot's drop zone to invite, or click to invite directly"
                     style={{
                       backgroundColor: '#1a1a2e',
                       borderRadius: '8px',
                       padding: '12px',
-                      cursor: 'pointer',
+                      cursor: 'grab',
                       border: '1px solid #3d3d5c',
-                      transition: 'border-color 0.2s',
+                      transition: 'border-color 0.2s, transform 0.2s',
                     }}
-                    onMouseOver={(e) => e.currentTarget.style.borderColor = '#ffd700'}
-                    onMouseOut={(e) => e.currentTarget.style.borderColor = '#3d3d5c'}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.borderColor = '#ffd700'
+                      e.currentTarget.style.transform = 'scale(1.02)'
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.borderColor = '#3d3d5c'
+                      e.currentTarget.style.transform = 'scale(1)'
+                    }}
                   >
                     <div style={{
                       display: 'flex',
@@ -175,7 +247,8 @@ export function CardSlot({
                       alignItems: 'center',
                       marginBottom: '4px',
                     }}>
-                      <span style={{ color: '#f5f5f5', fontWeight: '600' }}>
+                      <span style={{ color: '#f5f5f5', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ opacity: 0.5, fontSize: '12px' }}>⋮⋮</span>
                         {s.user.name}
                       </span>
                       <span style={{
