@@ -108,32 +108,79 @@ export function Home() {
   }
 
   const addSlot = async () => {
-    const newSlot: SlotState = {
-      id: `local-${Date.now()}`,
-      position: '',
-      skills: [],
-      loading: false,
-      suggestions: []
-    }
-    setSlots([...slots, newSlot])
+    try {
+      // For leaders: create slot via backend API
+      if (isLeader) {
+        // If no team exists, create one first
+        let currentTeam = team
+        if (!currentTeam) {
+          currentTeam = await teamsApi.create('My Team')
+          setTeam(currentTeam)
+        }
 
-    // If leader and has team, save to backend
-    if (isLeader && team) {
-      try {
-        const updatedTeam = await teamsApi.addSlot(team.id, 'frontend', [])
+        // Create slot with default values (empty position and skills)
+        const updatedTeam = await teamsApi.addSlot(currentTeam.id, 'frontend', [])
         setTeam(updatedTeam)
+        
+        // Get the newly created slot from the backend
         const newServerSlot = updatedTeam.slots[updatedTeam.slots.length - 1]
-        setSlots(prev => prev.map((s, i) => 
-          i === prev.length - 1 ? { ...s, id: newServerSlot.id } : s
-        ))
-      } catch (error) {
-        console.error('Failed to save slot:', error)
+        
+        // Add to local state
+        const newSlot: SlotState = {
+          id: newServerSlot.id,
+          position: newServerSlot.position,
+          skills: newServerSlot.skills,
+          loading: false,
+          suggestions: []
+        }
+        setSlots([...slots, newSlot])
+      } else {
+        // For members: create local slot only (they don't have teams)
+        const newSlot: SlotState = {
+          id: `local-${Date.now()}`,
+          position: '',
+          skills: [],
+          loading: false,
+          suggestions: []
+        }
+        setSlots([...slots, newSlot])
       }
+    } catch (error) {
+      console.error('Failed to create slot:', error)
+      alert('Failed to create slot. Please try again.')
     }
   }
 
-  const updateSlot = (slotId: string, updates: Partial<SlotState>) => {
+  const updateSlot = async (slotId: string, updates: Partial<SlotState>) => {
+    // Store previous state for potential revert
+    const previousSlot = slots.find(s => s.id === slotId)
+    if (!previousSlot) return
+
+    // Update local state immediately for better UX
     setSlots(prev => prev.map(s => s.id === slotId ? { ...s, ...updates } : s))
+
+    // Only save to backend if:
+    // 1. User is a leader
+    // 2. Has a team
+    // 3. Slot is not a local/temporary slot
+    // 4. Update includes position or skills (not just loading state)
+    const hasDataUpdate = updates.position !== undefined || updates.skills !== undefined
+    
+    if (isLeader && team && !slotId.startsWith('local-') && hasDataUpdate) {
+      try {
+        const updateData: { position?: Position; skills?: string[] } = {}
+        if (updates.position) updateData.position = updates.position as Position
+        if (updates.skills) updateData.skills = updates.skills
+
+        if (Object.keys(updateData).length > 0) {
+          await teamsApi.updateSlot(team.id, slotId, updateData)
+        }
+      } catch (error) {
+        console.error('Failed to update slot:', error)
+        // Revert local state on error
+        setSlots(prev => prev.map(s => s.id === slotId ? previousSlot : s))
+      }
+    }
   }
 
   const deleteSlot = async (slotId: string) => {
@@ -172,8 +219,28 @@ export function Home() {
     }
   }
 
-  const handleSelectSuggestion = (suggestion: MatchSuggestion) => {
-    alert(`${isLeader ? 'Invited' : 'Requested to join'} ${suggestion.user.name}!`)
+  const handleSelectSuggestion = async (slotId: string, suggestion: MatchSuggestion) => {
+    if (!isLeader || !team) {
+      alert('Only leaders can invite members')
+      return
+    }
+
+    try {
+      const updatedTeam = await teamsApi.inviteMember(team.id, slotId, suggestion.userId)
+      setTeam(updatedTeam)
+      
+      // Update local slots state to reflect the invitation
+      setSlots(prev => prev.map(s => 
+        s.id === slotId 
+          ? { ...s, suggestions: s.suggestions.filter(sug => sug.userId !== suggestion.userId) }
+          : s
+      ))
+      
+      alert(`Successfully invited ${suggestion.user.name}!`)
+    } catch (error: any) {
+      console.error('Failed to invite member:', error)
+      alert(error.message || 'Failed to invite member. Please try again.')
+    }
   }
 
   const handleAcceptInvitation = async (invitation: Invitation) => {
@@ -575,7 +642,7 @@ export function Home() {
               onDelete={() => deleteSlot(slot.id)}
               loading={slot.loading}
               suggestions={slot.suggestions}
-              onSelectSuggestion={handleSelectSuggestion}
+              onSelectSuggestion={(suggestion) => handleSelectSuggestion(slot.id, suggestion)}
             />
           ))}
         </div>

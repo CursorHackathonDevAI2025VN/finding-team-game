@@ -119,7 +119,10 @@ export const teamsApi = {
   },
 
   addSlot: async (teamId: string, position: Position, skills: string[]): Promise<Team> => {
-    const res = await api.post<ApiResponse<Team>>(`/teams/${teamId}/slots`, { position, skills })
+    const res = await api.post<ApiResponse<Team>>(`/teams/${teamId}/slots`, { 
+      position, 
+      skills: skills || [] 
+    })
     if (res.data.success && res.data.data) {
       return res.data.data
     }
@@ -132,6 +135,14 @@ export const teamsApi = {
       return res.data.data
     }
     throw new Error(res.data.error || 'Failed to update slot')
+  },
+
+  inviteMember: async (teamId: string, slotId: string, memberId: string): Promise<Team> => {
+    const res = await api.post<ApiResponse<Team>>(`/teams/${teamId}/slots/${slotId}/invite`, { memberId })
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to invite member')
   },
 
   deleteSlot: async (teamId: string, slotId: string): Promise<Team> => {
