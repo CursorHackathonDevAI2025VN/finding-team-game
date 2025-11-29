@@ -48,9 +48,9 @@ router.get('/:id', (req: Request, res: Response) => {
 // Update user profile
 router.put('/:id', (req: Request, res: Response) => {
   try {
-    const { name, position, skills } = req.body
+    const { name, position, skills, description } = req.body
     
-    const updated = store.updateUser(req.params.id, { name, position, skills })
+    const updated = store.updateUser(req.params.id, { name, position, skills, description })
     
     if (!updated) {
       return res.status(404).json({ success: false, error: 'User not found' })

@@ -125,6 +125,7 @@ router.get('/:id/members', (req: Request, res: Response) => {
       name: leader.name,
       position: leader.position,
       skills: leader.skills,
+      description: leader.description,
       role: leader.role
     } : null
 
@@ -139,6 +140,7 @@ router.get('/:id/members', (req: Request, res: Response) => {
             name: member.name,
             position: member.position,
             skills: member.skills,
+            description: member.description,
             role: member.role
           }
         }

@@ -18,6 +18,7 @@ export interface User {
   role: Role
   position: Position
   skills: string[]
+  description?: string
   teamId?: string
   createdAt: string
 }

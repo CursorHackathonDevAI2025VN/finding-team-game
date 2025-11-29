@@ -13,6 +13,7 @@ export function Profile() {
   const [name, setName] = useState('')
   const [position, setPosition] = useState<Position | ''>('')
   const [skills, setSkills] = useState<string[]>([])
+  const [description, setDescription] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [saving, setSaving] = useState(false)
@@ -28,6 +29,7 @@ export function Profile() {
       setName(user.name)
       setPosition(user.position)
       setSkills(user.skills)
+      setDescription(user.description || '')
     }
   }, [user])
 
@@ -49,7 +51,7 @@ export function Profile() {
     setSaving(true)
 
     try {
-      await updateUser({ name, position, skills })
+      await updateUser({ name, position, skills, description: description || undefined })
       setSuccess('Profile updated successfully!')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update profile')
@@ -218,6 +220,39 @@ export function Profile() {
             </div>
             <p style={{ color: '#a0a0b0', fontSize: '12px', marginTop: '4px' }}>
               Role cannot be changed
+            </p>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <label style={{
+              display: 'block',
+              color: '#f5f5f5',
+              marginBottom: '8px',
+              fontWeight: '500',
+            }}>
+              Bio <span style={{ color: '#a0a0b0', fontWeight: '400' }}>(optional)</span>
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={150}
+              rows={2}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                fontSize: '16px',
+                border: '2px solid #3d3d5c',
+                borderRadius: '8px',
+                backgroundColor: '#1a1a2e',
+                color: '#f5f5f5',
+                outline: 'none',
+                boxSizing: 'border-box',
+                resize: 'none',
+              }}
+              placeholder="Tell us a bit about yourself..."
+            />
+            <p style={{ color: '#a0a0b0', fontSize: '12px', marginTop: '4px' }}>
+              {description.length}/150 characters
             </p>
           </div>
 

@@ -25,6 +25,7 @@ export interface User {
   role: Role
   position: Position
   skills: string[] // Dynamic array of skills
+  description?: string // Optional short bio
   teamId?: string
   createdAt: string
 }

@@ -404,6 +404,11 @@ export function Home() {
           <p style={{ color: '#a0a0b0', margin: 0 }}>
             Welcome, {user.name} ({user.position})
           </p>
+          {user.description && (
+            <p style={{ color: '#8a8aa0', margin: '4px 0 0 0', fontSize: '14px', fontStyle: 'italic' }}>
+              "{user.description}"
+            </p>
+          )}
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <span style={{
@@ -741,6 +746,16 @@ export function Home() {
                       </span>
                     </div>
                   </div>
+                  {teamMembers.leader.description && (
+                    <p style={{
+                      color: '#a0a0b0',
+                      fontSize: '12px',
+                      margin: '0 0 8px 0',
+                      fontStyle: 'italic',
+                    }}>
+                      "{teamMembers.leader.description}"
+                    </p>
+                  )}
                   {teamMembers.leader.skills.length > 0 && (
                     <div style={{
                       display: 'flex',
@@ -837,10 +852,20 @@ export function Home() {
                       <p style={{
                         color: '#a0a0b0',
                         fontSize: '12px',
-                        margin: '0 0 8px 0',
+                        margin: '0 0 4px 0',
                       }}>
                         {slot.member.position}
                       </p>
+                      {slot.member.description && (
+                        <p style={{
+                          color: '#8a8aa0',
+                          fontSize: '11px',
+                          margin: '0 0 8px 0',
+                          fontStyle: 'italic',
+                        }}>
+                          "{slot.member.description}"
+                        </p>
+                      )}
                       {slot.member.skills.length > 0 && (
                         <div style={{
                           display: 'flex',

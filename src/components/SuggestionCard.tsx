@@ -76,6 +76,18 @@ export function SuggestionCard({ suggestion, onInvite, onRequestJoin, isLeader }
         </div>
       </div>
 
+      {/* Description */}
+      {user.description && (
+        <p style={{
+          color: '#a0a0b0',
+          fontSize: '13px',
+          margin: '0 0 12px 0',
+          fontStyle: 'italic',
+        }}>
+          "{user.description}"
+        </p>
+      )}
+
       {/* Skills */}
       <div style={{ marginBottom: '12px' }}>
         <div style={{ color: '#a0a0b0', fontSize: '12px', marginBottom: '6px' }}>

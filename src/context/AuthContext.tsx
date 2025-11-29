@@ -13,7 +13,7 @@ interface AuthContextType {
   login: (data: LoginRequest) => Promise<Omit<User, 'password'>>
   register: (data: RegisterRequest) => Promise<Omit<User, 'password'>>
   logout: () => void
-  updateUser: (data: { name?: string; position?: Position; skills?: string[] }) => Promise<Omit<User, 'password'>>
+  updateUser: (data: { name?: string; position?: Position; skills?: string[]; description?: string }) => Promise<Omit<User, 'password'>>
   refreshUser: () => Promise<void>
 }
 
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }
 
-  const updateUser = async (data: { name?: string; position?: Position; skills?: string[] }) => {
+  const updateUser = async (data: { name?: string; position?: Position; skills?: string[]; description?: string }) => {
     if (!user) {
       throw new Error('Not authenticated')
     }
