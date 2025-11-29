@@ -269,11 +269,20 @@ export function Home() {
 
     updateSlot(slotId, { loading: true })
 
+    // Minimum "AI thinking" delay for better UX perception (1.5-2.5s feels thoughtful)
+    const minThinkingDelay = 1500 + Math.random() * 1000
+
     try {
-      const result = await matchApi.getSuggestions(slot.position, slot.skills)
+      // Run API call and minimum delay in parallel, wait for both
+      const [result] = await Promise.all([
+        matchApi.getSuggestions(slot.position, slot.skills),
+        new Promise(resolve => setTimeout(resolve, minThinkingDelay))
+      ])
       updateSlot(slotId, { loading: false, suggestions: result.suggestions })
     } catch (error) {
       console.error('Match error:', error)
+      // Still wait a bit on error to feel natural
+      await new Promise(resolve => setTimeout(resolve, 800))
       updateSlot(slotId, { loading: false })
     }
   }
@@ -371,7 +380,7 @@ export function Home() {
         color: '#ffd700',
         fontSize: '20px',
       }}>
-        Loading...
+        Thinking...
       </div>
     )
   }

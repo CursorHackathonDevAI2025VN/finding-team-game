@@ -175,7 +175,7 @@ export function CardSlot({
               transition: 'all 0.2s',
             }}
           >
-            {loading ? '🔍 Finding...' : '🔍 Re-find Match'}
+            {loading ? '🧠 Thinking...' : '🔍 Re-find Match'}
           </button>
 
           {/* Drop Zone - always visible */}

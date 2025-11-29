@@ -71,7 +71,7 @@ export function Profile() {
         color: '#ffd700',
         fontSize: '20px',
       }}>
-        Loading...
+        Thinking...
       </div>
     )
   }
