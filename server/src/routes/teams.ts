@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import { v4 as uuidv4 } from 'uuid'
 import jwt from 'jsonwebtoken'
 import { store } from '../db/store'
-import { Team, Slot, JWTPayload, Position } from '../types'
+import { Team, Slot, JWTPayload, Position, InvitationStatus } from '../types'
 
 const router = Router()
 const JWT_SECRET = process.env.JWT_SECRET || 'hackathon-secret-key-2024'
@@ -30,23 +30,7 @@ router.get('/', (req: Request, res: Response) => {
   }
 })
 
-// Get team by ID
-router.get('/:id', (req: Request, res: Response) => {
-  try {
-    const team = store.getTeamById(req.params.id)
-    
-    if (!team) {
-      return res.status(404).json({ success: false, error: 'Team not found' })
-    }
-
-    res.json({ success: true, data: team })
-  } catch (error) {
-    console.error('Get team error:', error)
-    res.status(500).json({ success: false, error: 'Failed to get team' })
-  }
-})
-
-// Get current user's team
+// Get current user's team (MUST be before /:id to avoid matching "my" as an ID)
 router.get('/my/team', (req: Request, res: Response) => {
   try {
     const payload = getUserFromToken(req)
@@ -62,7 +46,7 @@ router.get('/my/team', (req: Request, res: Response) => {
   }
 })
 
-// Get invitations for current user (teams that have invited them)
+// Get invitations for current user (MUST be before /:id to avoid matching "invitations" as an ID)
 router.get('/invitations', (req: Request, res: Response) => {
   try {
     const payload = getUserFromToken(req)
@@ -78,18 +62,21 @@ router.get('/invitations', (req: Request, res: Response) => {
       position: Position
       skills: string[]
       leaderId: string
+      status: InvitationStatus
     }> = []
 
     allTeams.forEach(team => {
       team.slots.forEach(slot => {
-        if (slot.memberId === payload.userId) {
+        // Only show pending invitations
+        if (slot.memberId === payload.userId && slot.status === 'pending') {
           invitations.push({
             teamId: team.id,
             teamName: team.name,
             slotId: slot.id,
             position: slot.position,
             skills: slot.skills,
-            leaderId: team.leaderId
+            leaderId: team.leaderId,
+            status: slot.status
           })
         }
       })
@@ -99,6 +86,85 @@ router.get('/invitations', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Get invitations error:', error)
     res.status(500).json({ success: false, error: 'Failed to get invitations' })
+  }
+})
+
+// Get team by ID (MUST be after specific routes like /my/team and /invitations)
+router.get('/:id', (req: Request, res: Response) => {
+  try {
+    const team = store.getTeamById(req.params.id)
+    
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found' })
+    }
+
+    res.json({ success: true, data: team })
+  } catch (error) {
+    console.error('Get team error:', error)
+    res.status(500).json({ success: false, error: 'Failed to get team' })
+  }
+})
+
+// Get team members with details
+router.get('/:id/members', (req: Request, res: Response) => {
+  try {
+    const payload = getUserFromToken(req)
+    if (!payload) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' })
+    }
+
+    const team = store.getTeamById(req.params.id)
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found' })
+    }
+
+    // Get leader info
+    const leader = store.getUserById(team.leaderId)
+    const leaderInfo = leader ? {
+      id: leader.id,
+      name: leader.name,
+      position: leader.position,
+      skills: leader.skills,
+      role: leader.role
+    } : null
+
+    // Get slots with member details
+    const slotsWithMembers = team.slots.map(slot => {
+      let memberInfo = null
+      if (slot.memberId) {
+        const member = store.getUserById(slot.memberId)
+        if (member) {
+          memberInfo = {
+            id: member.id,
+            name: member.name,
+            position: member.position,
+            skills: member.skills,
+            role: member.role
+          }
+        }
+      }
+      return {
+        id: slot.id,
+        position: slot.position,
+        skills: slot.skills,
+        status: slot.status,
+        member: memberInfo
+      }
+    })
+
+    res.json({
+      success: true,
+      data: {
+        id: team.id,
+        name: team.name,
+        leader: leaderInfo,
+        slots: slotsWithMembers,
+        createdAt: team.createdAt
+      }
+    })
+  } catch (error) {
+    console.error('Get team members error:', error)
+    res.status(500).json({ success: false, error: 'Failed to get team members' })
   }
 })
 
@@ -272,9 +338,9 @@ router.post('/:teamId/slots/:slotId/invite', (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: 'Can only invite members, not leaders' })
     }
 
-    // Check if member is already in a team
-    if (member.teamId && member.teamId !== team.id) {
-      return res.status(400).json({ success: false, error: 'Member is already in another team' })
+    // Check if member is already in a team (has accepted an invitation)
+    if (member.teamId) {
+      return res.status(400).json({ success: false, error: 'Member is already in a team' })
     }
 
     // Check if slot already has a different member
@@ -288,15 +354,14 @@ router.post('/:teamId/slots/:slotId/invite', (req: Request, res: Response) => {
       return res.status(200).json({ success: true, data: team, message: 'Member already invited to this slot' })
     }
 
-    // Update slot with memberId
+    // Update slot with memberId and set status to pending
+    // Note: We do NOT set the user's teamId yet - that happens on accept
     const updatedSlots = [...team.slots]
     updatedSlots[slotIndex] = {
       ...updatedSlots[slotIndex],
-      memberId: memberId
+      memberId: memberId,
+      status: 'pending'
     }
-
-    // Update member's teamId
-    store.updateUser(memberId, { teamId: team.id })
 
     const updatedTeam = store.updateTeam(team.id, { slots: updatedSlots })
     if (!updatedTeam) {
@@ -307,6 +372,115 @@ router.post('/:teamId/slots/:slotId/invite', (req: Request, res: Response) => {
   } catch (error) {
     console.error('Invite member error:', error)
     res.status(500).json({ success: false, error: 'Failed to invite member' })
+  }
+})
+
+// Accept invitation (member only)
+router.post('/:teamId/slots/:slotId/accept', (req: Request, res: Response) => {
+  try {
+    const payload = getUserFromToken(req)
+    if (!payload) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' })
+    }
+
+    const team = store.getTeamById(req.params.teamId)
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found' })
+    }
+
+    const slotIndex = team.slots.findIndex(s => s.id === req.params.slotId)
+    if (slotIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Slot not found' })
+    }
+
+    const slot = team.slots[slotIndex]
+
+    // Verify the invitation is for this user
+    if (slot.memberId !== payload.userId) {
+      return res.status(403).json({ success: false, error: 'This invitation is not for you' })
+    }
+
+    // Check if already accepted
+    if (slot.status === 'accepted') {
+      return res.status(200).json({ success: true, data: team, message: 'Already accepted' })
+    }
+
+    // Check if invitation is pending
+    if (slot.status !== 'pending') {
+      return res.status(400).json({ success: false, error: 'No pending invitation found' })
+    }
+
+    // Check if user is already in another team
+    const user = store.getUserById(payload.userId)
+    if (user?.teamId) {
+      return res.status(400).json({ success: false, error: 'You are already in a team' })
+    }
+
+    // Update slot status to accepted
+    const updatedSlots = [...team.slots]
+    updatedSlots[slotIndex] = {
+      ...updatedSlots[slotIndex],
+      status: 'accepted'
+    }
+
+    // Update user's teamId
+    store.updateUser(payload.userId, { teamId: team.id })
+
+    const updatedTeam = store.updateTeam(team.id, { slots: updatedSlots })
+    if (!updatedTeam) {
+      return res.status(500).json({ success: false, error: 'Failed to accept invitation' })
+    }
+
+    res.status(200).json({ success: true, data: updatedTeam })
+  } catch (error) {
+    console.error('Accept invitation error:', error)
+    res.status(500).json({ success: false, error: 'Failed to accept invitation' })
+  }
+})
+
+// Decline invitation (member only)
+router.post('/:teamId/slots/:slotId/decline', (req: Request, res: Response) => {
+  try {
+    const payload = getUserFromToken(req)
+    if (!payload) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' })
+    }
+
+    const team = store.getTeamById(req.params.teamId)
+    if (!team) {
+      return res.status(404).json({ success: false, error: 'Team not found' })
+    }
+
+    const slotIndex = team.slots.findIndex(s => s.id === req.params.slotId)
+    if (slotIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Slot not found' })
+    }
+
+    const slot = team.slots[slotIndex]
+
+    // Verify the invitation is for this user
+    if (slot.memberId !== payload.userId) {
+      return res.status(403).json({ success: false, error: 'This invitation is not for you' })
+    }
+
+    // Clear memberId and status from slot
+    const updatedSlots = [...team.slots]
+    updatedSlots[slotIndex] = {
+      id: slot.id,
+      position: slot.position,
+      skills: slot.skills
+      // memberId and status are cleared
+    }
+
+    const updatedTeam = store.updateTeam(team.id, { slots: updatedSlots })
+    if (!updatedTeam) {
+      return res.status(500).json({ success: false, error: 'Failed to decline invitation' })
+    }
+
+    res.status(200).json({ success: true, data: updatedTeam })
+  } catch (error) {
+    console.error('Decline invitation error:', error)
+    res.status(500).json({ success: false, error: 'Failed to decline invitation' })
   }
 })
 

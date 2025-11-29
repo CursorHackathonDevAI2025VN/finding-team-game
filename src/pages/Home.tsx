@@ -3,7 +3,8 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { CardSlot } from '../components/CardSlot'
 import { matchApi, teamsApi } from '../services/api'
-import type { Position, MatchSuggestion, Team } from '../types'
+import type { TeamMembersResponse } from '../services/api'
+import type { Position, MatchSuggestion, Team, InvitationStatus } from '../types'
 
 interface SlotState {
   id: string
@@ -20,15 +21,17 @@ interface Invitation {
   position: Position
   skills: string[]
   leaderId: string
+  status: InvitationStatus
 }
 
 export function Home() {
-  const { user, isLeader, logout, loading: authLoading } = useAuth()
+  const { user, isLeader, logout, loading: authLoading, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [slots, setSlots] = useState<SlotState[]>([])
   const [team, setTeam] = useState<Team | null>(null)
   const [invitations, setInvitations] = useState<Invitation[]>([])
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
+  const [teamMembers, setTeamMembers] = useState<TeamMembersResponse | null>(null)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -42,6 +45,32 @@ export function Home() {
     }
   }, [user, isLeader])
 
+  // Load team members when team changes or for members who are in a team
+  useEffect(() => {
+    const loadTeamMembers = async () => {
+      // For leaders: load if they have a team
+      if (isLeader && team) {
+        try {
+          const members = await teamsApi.getTeamMembers(team.id)
+          setTeamMembers(members)
+        } catch (error) {
+          console.error('Failed to load team members:', error)
+        }
+      }
+      // For members: load if they have joined a team
+      else if (!isLeader && user?.teamId) {
+        try {
+          const members = await teamsApi.getTeamMembers(user.teamId)
+          setTeamMembers(members)
+        } catch (error) {
+          console.error('Failed to load team members:', error)
+        }
+      }
+    }
+
+    loadTeamMembers()
+  }, [isLeader, team, user?.teamId])
+
   // Check for invitations (for members only)
   const checkInvitations = async () => {
     if (!user || isLeader) return
@@ -52,6 +81,18 @@ export function Home() {
       console.log('[Polling] Invitations found:', userInvitations.length)
     } catch (error) {
       console.error('Failed to check invitations:', error)
+    }
+  }
+
+  // Refresh team members (for leaders)
+  const refreshTeamMembers = async () => {
+    if (!user || !isLeader || !team) return
+
+    try {
+      const members = await teamsApi.getTeamMembers(team.id)
+      setTeamMembers(members)
+    } catch (error) {
+      console.error('Failed to refresh team members:', error)
     }
   }
 
@@ -84,6 +125,11 @@ export function Home() {
       if (!isLeader) {
         checkInvitations()
       }
+
+      // Refresh team members on each poll (for leaders)
+      if (isLeader && team) {
+        refreshTeamMembers()
+      }
     }, 1000)
 
     return () => clearInterval(pollInterval)
@@ -101,6 +147,9 @@ export function Home() {
           loading: false,
           suggestions: []
         })))
+        // Also load team members
+        const members = await teamsApi.getTeamMembers(myTeam.id)
+        setTeamMembers(members)
       }
     } catch (error) {
       console.error('Failed to load team:', error)
@@ -245,30 +294,35 @@ export function Home() {
 
   const handleAcceptInvitation = async (invitation: Invitation) => {
     try {
-      // Accept invitation by updating the slot (memberId is already set, just confirm)
-      await teamsApi.updateSlot(invitation.teamId, invitation.slotId, {})
+      // Accept invitation using the proper API endpoint
+      await teamsApi.acceptInvitation(invitation.teamId, invitation.slotId)
       // Remove from invitations list
       setInvitations(prev => prev.filter(inv => 
         !(inv.teamId === invitation.teamId && inv.slotId === invitation.slotId)
       ))
+      // Refresh user data to get updated teamId
+      await refreshUser()
+      // Load team members
+      const members = await teamsApi.getTeamMembers(invitation.teamId)
+      setTeamMembers(members)
       alert(`You've joined ${invitation.teamName}!`)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to accept invitation:', error)
-      alert('Failed to accept invitation')
+      alert(error.message || 'Failed to accept invitation')
     }
   }
 
   const handleDeclineInvitation = async (invitation: Invitation) => {
     try {
-      // Decline by removing memberId from slot
-      await teamsApi.updateSlot(invitation.teamId, invitation.slotId, { memberId: undefined })
+      // Decline invitation using the proper API endpoint
+      await teamsApi.declineInvitation(invitation.teamId, invitation.slotId)
       // Remove from invitations list
       setInvitations(prev => prev.filter(inv => 
         !(inv.teamId === invitation.teamId && inv.slotId === invitation.slotId)
       ))
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to decline invitation:', error)
-      alert('Failed to decline invitation')
+      alert(error.message || 'Failed to decline invitation')
     }
   }
 
@@ -593,6 +647,251 @@ export function Home() {
 
       {/* Main Content */}
       <main style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Team Members Section */}
+        {teamMembers && (
+          <div style={{
+            backgroundColor: '#2a2a4a',
+            borderRadius: '16px',
+            padding: '24px',
+            marginBottom: '24px',
+            border: '2px solid #3d3d5c',
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+            }}>
+              <h2 style={{
+                color: '#ffd700',
+                fontSize: '22px',
+                fontWeight: '700',
+                margin: 0,
+              }}>
+                👥 {teamMembers.name}
+              </h2>
+              <span style={{
+                backgroundColor: '#3d3d5c',
+                color: '#a0a0b0',
+                padding: '6px 12px',
+                borderRadius: '8px',
+                fontSize: '12px',
+              }}>
+                {teamMembers.slots.filter(s => s.status === 'accepted').length + 1} / {teamMembers.slots.length + 1} members
+              </span>
+            </div>
+
+            {/* Leader Card */}
+            {teamMembers.leader && (
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '12px',
+                marginBottom: '16px',
+              }}>
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: '#1a1a2e',
+                  borderRadius: '12px',
+                  border: '2px solid #ffd700',
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '8px',
+                  }}>
+                    <span style={{
+                      fontSize: '24px',
+                    }}>👑</span>
+                    <div>
+                      <h4 style={{
+                        color: '#f5f5f5',
+                        fontSize: '16px',
+                        fontWeight: '600',
+                        margin: '0 0 4px 0',
+                      }}>
+                        {teamMembers.leader.name}
+                      </h4>
+                      <span style={{
+                        color: '#ffd700',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                      }}>
+                        Leader • {teamMembers.leader.position}
+                      </span>
+                    </div>
+                  </div>
+                  {teamMembers.leader.skills.length > 0 && (
+                    <div style={{
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                      marginTop: '8px',
+                    }}>
+                      {teamMembers.leader.skills.map((skill, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            padding: '4px 8px',
+                            backgroundColor: '#3d3d5c',
+                            color: '#ffd700',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                          }}
+                        >
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Team Slots */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '12px',
+            }}>
+              {teamMembers.slots.map((slot) => (
+                <div
+                  key={slot.id}
+                  style={{
+                    padding: '16px',
+                    backgroundColor: '#1a1a2e',
+                    borderRadius: '12px',
+                    border: `1px solid ${slot.status === 'accepted' ? '#4CAF50' : slot.status === 'pending' ? '#ff9800' : '#3d3d5c'}`,
+                  }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '8px',
+                  }}>
+                    <span style={{
+                      color: '#a0a0b0',
+                      fontSize: '12px',
+                      textTransform: 'uppercase',
+                      fontWeight: '600',
+                    }}>
+                      {slot.position}
+                    </span>
+                    {slot.status && (
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: '600',
+                        backgroundColor: slot.status === 'accepted' ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 152, 0, 0.2)',
+                        color: slot.status === 'accepted' ? '#4CAF50' : '#ff9800',
+                      }}>
+                        {slot.status === 'accepted' ? '✓ Accepted' : '⏳ Pending'}
+                      </span>
+                    )}
+                    {!slot.status && !slot.member && (
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: '600',
+                        backgroundColor: 'rgba(160, 160, 176, 0.2)',
+                        color: '#a0a0b0',
+                      }}>
+                        Open
+                      </span>
+                    )}
+                  </div>
+
+                  {slot.member ? (
+                    <div>
+                      <h4 style={{
+                        color: '#f5f5f5',
+                        fontSize: '15px',
+                        fontWeight: '600',
+                        margin: '0 0 4px 0',
+                      }}>
+                        {slot.member.name}
+                      </h4>
+                      <p style={{
+                        color: '#a0a0b0',
+                        fontSize: '12px',
+                        margin: '0 0 8px 0',
+                      }}>
+                        {slot.member.position}
+                      </p>
+                      {slot.member.skills.length > 0 && (
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '4px',
+                        }}>
+                          {slot.member.skills.slice(0, 4).map((skill, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '2px 6px',
+                                backgroundColor: '#3d3d5c',
+                                color: '#a0a0b0',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                              }}
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                          {slot.member.skills.length > 4 && (
+                            <span style={{
+                              padding: '2px 6px',
+                              color: '#a0a0b0',
+                              fontSize: '10px',
+                            }}>
+                              +{slot.member.skills.length - 4} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{
+                      color: '#a0a0b0',
+                      fontSize: '13px',
+                    }}>
+                      <p style={{ margin: '0 0 8px 0' }}>Looking for:</p>
+                      {slot.skills.length > 0 ? (
+                        <div style={{
+                          display: 'flex',
+                          flexWrap: 'wrap',
+                          gap: '4px',
+                        }}>
+                          {slot.skills.map((skill, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                padding: '2px 6px',
+                                backgroundColor: '#3d3d5c',
+                                color: '#ffd700',
+                                borderRadius: '4px',
+                                fontSize: '10px',
+                              }}
+                            >
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span style={{ fontStyle: 'italic' }}>No specific skills required</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Create Team Button for Leaders without team */}
         {isLeader && !team && (
           <div style={{

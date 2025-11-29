@@ -6,6 +6,9 @@ export const POSITIONS: Position[] = ['frontend', 'backend', 'design', 'business
 // Role types
 export type Role = 'leader' | 'member'
 
+// Invitation status
+export type InvitationStatus = 'pending' | 'accepted'
+
 // User type
 export interface User {
   id: string
@@ -25,6 +28,7 @@ export interface Slot {
   position: Position
   skills: string[]
   memberId?: string
+  status?: InvitationStatus
 }
 
 // Team type

@@ -13,6 +13,9 @@ export const POSITION_LABELS: Record<Position, string> = {
 // Role types
 export type Role = 'leader' | 'member'
 
+// Invitation status
+export type InvitationStatus = 'pending' | 'accepted'
+
 // User type
 export interface User {
   id: string
@@ -32,6 +35,7 @@ export interface Slot {
   position: Position
   skills: string[] // Required skills for this slot
   memberId?: string
+  status?: InvitationStatus
 }
 
 // Team type

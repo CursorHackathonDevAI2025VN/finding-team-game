@@ -14,6 +14,7 @@ interface AuthContextType {
   register: (data: RegisterRequest) => Promise<Omit<User, 'password'>>
   logout: () => void
   updateUser: (data: { name?: string; position?: Position; skills?: string[] }) => Promise<Omit<User, 'password'>>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -97,6 +98,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  const refreshUser = async () => {
+    try {
+      const userData = await authApi.getMe()
+      setUser(userData)
+    } catch (err) {
+      console.error('Failed to refresh user:', err)
+    }
+  }
+
   return (
     <AuthContext.Provider
       value={{
@@ -110,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         updateUser,
+        refreshUser,
       }}
     >
       {children}

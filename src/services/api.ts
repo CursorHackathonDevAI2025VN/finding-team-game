@@ -7,8 +7,34 @@ import type {
   MatchResponse,
   RegisterRequest,
   LoginRequest,
-  Position
+  Position,
+  InvitationStatus
 } from '../types'
+
+// Types for team members response
+export interface TeamMemberInfo {
+  id: string
+  name: string
+  position: Position
+  skills: string[]
+  role: 'leader' | 'member'
+}
+
+export interface SlotWithMember {
+  id: string
+  position: Position
+  skills: string[]
+  status?: InvitationStatus
+  member: TeamMemberInfo | null
+}
+
+export interface TeamMembersResponse {
+  id: string
+  name: string
+  leader: TeamMemberInfo | null
+  slots: SlotWithMember[]
+  createdAt: string
+}
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -160,6 +186,7 @@ export const teamsApi = {
     position: Position
     skills: string[]
     leaderId: string
+    status: InvitationStatus
   }>> => {
     const res = await api.get<ApiResponse<Array<{
       teamId: string
@@ -168,11 +195,36 @@ export const teamsApi = {
       position: Position
       skills: string[]
       leaderId: string
+      status: InvitationStatus
     }>>>('/teams/invitations')
     if (res.data.success && res.data.data) {
       return res.data.data
     }
     throw new Error(res.data.error || 'Failed to get invitations')
+  },
+
+  acceptInvitation: async (teamId: string, slotId: string): Promise<Team> => {
+    const res = await api.post<ApiResponse<Team>>(`/teams/${teamId}/slots/${slotId}/accept`)
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to accept invitation')
+  },
+
+  declineInvitation: async (teamId: string, slotId: string): Promise<Team> => {
+    const res = await api.post<ApiResponse<Team>>(`/teams/${teamId}/slots/${slotId}/decline`)
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to decline invitation')
+  },
+
+  getTeamMembers: async (teamId: string): Promise<TeamMembersResponse> => {
+    const res = await api.get<ApiResponse<TeamMembersResponse>>(`/teams/${teamId}/members`)
+    if (res.data.success && res.data.data) {
+      return res.data.data
+    }
+    throw new Error(res.data.error || 'Failed to get team members')
   }
 }
 
